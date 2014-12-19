@@ -1,0 +1,22 @@
+{
+  "name": "ubc-learninglocker",
+  "version": "0.1.0",
+  "author": "Pan Luo",
+  "summary": "Install and configure Learning Locker",
+  "license": "Apache 2.0",
+  "source": "https://github.com/ubc/puppet-learninglocker",
+  "project_page": "https://github.com/ubc/puppet-learninglocker",
+  "issues_url": "https://github.com/ubc/puppet-learninglocker/issues",
+  "dependencies": [
+    {"version_requirement":">= 1.0.0","name":"puppetlabs-stdlib"},
+    {"version_requirement":">= 0.2.0","name":"jfryman-nginx"},
+    {"version_requirement":">= 1.0.0","name":"kemra102-ius"},
+    {"version_requirement":">= 1.0.0","name":"tPl0ch-composer"},
+    {"version_requirement":">= 0.9.0","name":"puppetlabs-mongodb"},
+    {"version_requirement":">= 1.0.0","name":"fsalum-redis"},
+    {"version_requirement":">= 0.6.1","name":"puppetlabs-nodejs"},
+    {"version_requirement":">= 1.0.0","name":"puppetlabs-firewall"},
+    {"version_requirement":">= 0.1.0","name":"ubc-php"}
+  ]
+}
+
