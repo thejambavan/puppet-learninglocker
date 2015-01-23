@@ -18,4 +18,10 @@ class learninglocker::db (
     user     => $username,
     password => $password,
   }
+
+  firewall { '200 allow database access':
+    port   => [$port],
+    proto  => tcp,
+    action => accept,
+  }
 }

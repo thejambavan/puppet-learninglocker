@@ -12,14 +12,7 @@
 #
 # === Variables
 #
-# Here you should define a list of variables that this module would require.
-#
-# [*sample_variable*]
-#   Explanation of how this variable affects the funtion of this class and if
-#   it has a default. e.g. "The parameter enc_ntp_servers must be set by the
-#   External Node Classifier as a comma separated list of hostnames." (Note,
-#   global variables should be avoided in favor of class parameters as
-#   of Puppet 2.6.)
+# See readme
 #
 # === Examples
 #
@@ -38,7 +31,7 @@
 class learninglocker::web (
   $server_domain,
   $doc_base = "/www_data/learninglocker",
-  $default = false,
+  $default_fqdn = false,
   $port = 80,
   $ssl = false,
   $ssl_cert = undef,
@@ -52,6 +45,9 @@ class learninglocker::web (
   $cache_host = 'localhost',
   $cache_port = 6379,
   $github_token = undef,
+  $timezone = 'America/Vancouver',
+  $dev = false,
+  $version = 'master',
 ) {
 
   include ius
@@ -71,54 +67,60 @@ class learninglocker::web (
   user { 'app':
     ensure  => present,
     groups  => ['nginx'],
-    home    => $doc_base,
+    home    => '/tmp',
     require => Package['nginx'],
   }
 
   # setup php
   class { 'php':
-    php_name => 'php54'
+    ensure => 'latest',
+    fpm => false,
+    composer => false,
+    phpunit => false,
+    dev => false,
+    pear => false,
+    package_prefix => 'php54-',
+    settings => {
+        'Date/date.timezone' => $timezone,
+    },
+    extensions => {
+        'pecl-zendopcache' => {
+	    settings => {
+	      'OpCache/opcache.enable'      => '1',
+	      'OpCache/opcache.use_cwd'     => '1',
+	      'OpCache/opcache.save_comments' => '1',
+	      'OpCache/opcache.load_comments' => '1',
+	    }
+        },
+        'xml' => {},
+        'mcrypt' => {},
+        'pdo' => {},
+        'pecl-mongo' => {},
+        'mbstring' => {},
+    },
+    require => [Package['nginx'], Class['ius']],
   }
 
-  php::ini { '/etc/php.ini': }
-  class {'php::cli': }
-
-  if ! defined(Php::Module['pecl-apc']) {
-    php::module { 'pecl-apc': }
-    php::module::ini { 'pecl-apc':
-      settings => {
-          'apc.enabled'      => '1',
-          'apc.shm_segments' => '1',
-          'apc.shm_size'     => '32M',
-          'apc.stat'         => $apc_stat,
+  Anchor['php::begin'] ->
+    class { 'php::fpm':
+      settings => $settings,
+      require => Package['nginx'],
+      pools => {
+        'learninglocker' => {
+          ensure => present,
+          user   => 'nginx',
+          group  => 'nginx'
+        },
+        'www' => {
+          ensure => absent,
+        }
       }
-    }
-  }
-
-  php::module { 'xml': }
-  php::module { 'mcrypt': }
-  php::module { 'pdo': }
-  php::module { 'pecl-mongo': }
-  php::module { 'mbstring': }
-
-  class { 'php::fpm::daemon':
-    ensure => present,
-    require => Package['nginx']
-  }
-
-  php::fpm::conf { 'www':
-    ensure => absent
-  }
-  php::fpm::conf { 'learninglocker':
-    ensure => present,
-    user   => 'nginx',
-    group  => 'nginx'
-  }
+    } ->
+  Anchor['php::end']
 
   class { 'composer':
     php_package => 'php54-cli',
     github_token => $github_token,
-    require => Package['php54-cli']
   }
 
   package { 'bower':
@@ -128,34 +130,44 @@ class learninglocker::web (
   }
 
   # install learning locker application
-
-  # has to be disabled until learning locker includes composer.lock file in repo
-  #composer::project { 'learninglocker':
-  #  project_name => 'learninglocker/learninglocker',
-  #  target_dir => $doc_base,
-  #  stability => 'stable'
-  #}->
-
-  # make sure directory exists
-  exec { "mkdir_p-${doc_base}":
-    command => "mkdir -p ${doc_base}",
-    unless  => "test -d ${doc_base}",
-    path    => '/bin:/usr/bin',
+  $base_dir = dirname($doc_base)
+  exec { "create ${base_dir}":
+    command     => "mkdir -p ${base_dir}",
+    creates     => $base_dir,
+    path        => '/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin',
   }->
 
-  # change the ownership so that repo can be clone as app user
-  file { $doc_base:
+  file { $base_dir:
     ensure  => present,
     owner   => 'app',
     mode    => '0755',
     require => User['app'],
   }->
 
+  # hack to make bower insight module happy, it looks for $HOME for current user
+  file { '/home/root':
+    ensure  => directory,
+    owner   => 'app',
+    mode    => '0755',
+    require => User['app'],
+  }->
+
+  # it looks like composer create-project doesn't play well with non-root user installation
+#  composer::project { 'learninglocker':
+#    project_name => 'learninglocker/learninglocker',
+#    target_dir => $doc_base,
+#    stability => 'stable',
+#    user      => 'app',
+#    keep_vcs  => true,
+#    dev       => $dev,
+#  }->
+
   vcsrepo { $doc_base:
     ensure   => present,
     provider => git,
-    source   => 'https://github.com/ubc/learninglocker.git',
+    source   => 'https://github.com/LearningLocker/learninglocker.git',
     user     => 'app',
+    revision => $version,
   } ->
 
   composer::exec { 'learninglocker-install':
@@ -175,39 +187,42 @@ class learninglocker::web (
     ensure => directory,
     owner  => 'nginx',
     mode   => '0775',
-#    require => Composer::Project['learninglocker']
-  }->
+    require => Composer::Exec['learninglocker-install']
+  }
 
   file { ["${doc_base}/app/storage/meta/services.json"]:
     ensure => present,
     owner  => 'nginx',
     mode   => '0774',
-#    require => Composer::Project['learninglocker']
-  }->
+    require => Composer::Exec['learninglocker-install']
+  }
 
   file {"${doc_base}/app/config/database.php":
     ensure => present,
     content => template('learninglocker/database.php.erb'),
-    tag => $domain
-  } ->
+    tag => $domain,
+    require => Composer::Exec['learninglocker-install']
+  }
 
   file {"${doc_base}/app/config/cache.php":
     ensure => present,
     content => template('learninglocker/cache.php.erb'),
-    tag => $domain
-  }->
+    tag => $domain,
+    require => Composer::Exec['learninglocker-install']
+  }
 
   file {"${doc_base}/app/config/session.php":
     ensure => present,
     content => template('learninglocker/session.php.erb'),
-    tag => $domain
+    tag => $domain,
+    require => Composer::Exec['learninglocker-install']
   }
 
   nginx::resource::vhost {$server_domain:
     ensure         => present,
     www_root       => "${doc_base}/public",
     listen_port    => $port,
-    server_name => $default ? {
+    server_name => $default_fqdn ? {
       true  => [$server_domain, $fqdn],
       false => [$server_domain],
     },
