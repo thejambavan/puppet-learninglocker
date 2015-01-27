@@ -162,8 +162,8 @@ class learninglocker::web (
 
   php::fpm::pool { 'learninglocker':
     ensure => present,
-    user => $nginx_user,
-    group => $nginx_group,
+    user   => $nginx_user,
+    group  => $nginx_group,
   }
 
   #class { 'php::fpm':
@@ -185,7 +185,7 @@ class learninglocker::web (
     php_package     => $composer_php_package,
     suhosin_enabled => false,
     github_token    => $github_token,
-    require => Class['php'],
+    require         => Class['php'],
   }
 
   package { 'bower':
