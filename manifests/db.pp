@@ -1,3 +1,4 @@
+# learning locker database role
 class learninglocker::db (
   $port = 27017,
   $database = 'learninglocker',
@@ -6,13 +7,14 @@ class learninglocker::db (
 ) {
   class {'::mongodb::globals':
     manage_package_repo => true,
+    bind_ip             => '0.0.0.0',
   }->
 
   class {'::mongodb::server':
-    port    => $port,
+    port => $port,
   }->
 
-  class {'::mongodb::client':}
+  class {'::mongodb::client':} ->
 
   mongodb::db { $database:
     user     => $username,

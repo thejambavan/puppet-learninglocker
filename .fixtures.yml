@@ -1,0 +1,22 @@
+fixtures:
+  repositories:
+    "stdlib": "https://github.com/puppetlabs/puppetlabs-stdlib"
+    "firewall": "https://github.com/puppetlabs/puppetlabs-firewall.git"
+    "nginx": "https://github.com/jfryman/puppet-nginx.git"
+    "ius": "https://github.com/kemra102/puppet-ius.git"
+    "composer": "https://github.com/tPl0ch/puppet-composer.git"
+    "mongodb": "https://github.com/puppetlabs/puppetlabs-mongodb.git"
+    "redis": "https://github.com/fsalum/puppet-redis.git"
+    "nodejs": "https://github.com/puppetlabs/puppetlabs-nodejs.git"
+    "php": "https://github.com/Mayflower/puppet-php.git"
+    "sysctl": "https://github.com/thias/puppet-sysctl.git"
+    "epel": "https://github.com/stahnma/puppet-module-epel.git"
+    "apt": "https://github.com/puppetlabs/puppetlabs-apt.git"
+    "concat": "https://github.com/puppetlabs/puppetlabs-concat.git"
+    "git": "https://github.com/puppetlabs/puppetlabs-git.git"
+    "vcsrepo": "https://github.com/puppetlabs/puppetlabs-vcsrepo.git"
+    "zypprepo": "https://github.com/deadpoint/puppet-zypprepo.git"
+    "yum": "https://github.com/example42/puppet-yum.git"
+    "inifile": "https://github.com/puppetlabs/puppetlabs-inifile.git"
+  symlinks:
+    "learninglocker": "#{source_dir}"

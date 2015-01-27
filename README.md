@@ -56,6 +56,7 @@ when downloading modules from github. Otherwise, you may run into limitation whe
 ### Parameters
 
 #### learninglocker::web
+Learning Locker web role.
 
 ##### `server_domain` (required)
 The domain name of the server.
@@ -97,17 +98,27 @@ Whether to enable dev mode. E.g. installing dev dependencies.
 The version of Learning Locker to be installed. Can be a release version number, branch name or a commit.
 
 #### learninglocker::db
+Learning Locker database role.
 ##### `port` (default: 27017)
 ##### `database` (default: 'learninglocker')
 ##### `username` (default: 'learninglocker')
 ##### `password` (default: 'learninglocker')
 
 #### learninglocker::cache
-
-## Limitations
-
-Tested on CentOS 6.5
+Learning Locker cache role.
 
 ## Development
+
+### Running tests
+
+#### Spec tests
+
+    rake spec
+
+#### Acceptance tests
+
+    vagrant up
+
+## Contributions
 
 Any pull request is welcome!

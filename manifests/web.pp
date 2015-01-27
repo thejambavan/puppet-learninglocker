@@ -1,10 +1,10 @@
-# == Class: learninglocker
+# == Class: learninglocker::web
 #
-# Full description of class learninglocker here.
+# Installs web component of Learning Locker
 #
 # === Parameters
 #
-# Document parameters here.
+# See readme
 #
 # [*sample_parameter*]
 #   Explanation of what this parameter affects and what it defaults to.
@@ -16,21 +16,21 @@
 #
 # === Examples
 #
-#  class { 'learninglocker':
-#    servers => [ 'pool.ntp.org', 'ntp.local.company.com' ],
+#  class { 'learninglocker::web':
+#    $server_domain => 'lrs.example.com',
 #  }
 #
 # === Authors
 #
-# Author Name <author@domain.com>
+# Pan Luo <pan.luo@ubc.ca>
 #
 # === Copyright
 #
-# Copyright 2014 Your name here, unless otherwise noted.
+# Copyright 2015 Centre for Teaching, Learning and Technology, UBC, unless otherwise noted.
 #
 class learninglocker::web (
   $server_domain,
-  $doc_base = "/www_data/learninglocker",
+  $doc_base = '/www_data/learninglocker',
   $default_fqdn = false,
   $port = 80,
   $ssl = false,
@@ -50,8 +50,75 @@ class learninglocker::web (
   $version = 'master',
 ) {
 
-  include ius
-  include nodejs
+  case $::osfamily {
+    'RedHat': {
+      case $::operatingsystemrelease {
+        /^5.*/,/^6.*/: {
+          include ius
+          $php_package_prefix = 'php54-'
+          $composer_php_package = 'php54-cli'
+          $php_require = [Package['nginx'], Class['ius']]
+          $manage_nodejs_repo = true
+          $nodejs_require = [Yumrepo['epel']]
+        }
+        /^7.*/: {
+          include epel
+          $php_package_prefix = 'php-'
+          $composer_php_package = 'php-cli'
+          $php_require = [Package['nginx'], Yumrepo['epel']]
+          $manage_nodejs_repo = false
+          $nodejs_require = [Yumrepo['epel']]
+        }
+        default: {
+          fail("Unsupported platform: ${::operatingsystem} ${::operatingsystemrelease}")
+        }
+      }
+      $php_extensions = {
+        'pecl-zendopcache' => {
+          settings => {
+            'OpCache/opcache.enable'      => '1',
+            'OpCache/opcache.use_cwd'     => '1',
+            'OpCache/opcache.save_comments' => '1',
+            'OpCache/opcache.load_comments' => '1',
+          }
+        },
+        'xml' => {},
+        'mcrypt' => {},
+        'pdo' => {},
+        'pecl-mongo' => {},
+        'mbstring' => {},
+      }
+      $nginx_user = 'nginx'
+      $nginx_group = 'nginx'
+    }
+    'Debian': {
+      case $::operatingsystemrelease {
+        12.04: {
+          $manage_nodejs_repo = true
+        }
+        default: {
+          $manage_nodejs_repo = true
+        }
+      }
+      $php_package_prefix = undef
+      $php_require = [Package['nginx']]
+      $php_extensions = {
+        'mcrypt' => {},
+        'mongo' => {},
+      }
+      $nginx_user = 'www-data'
+      $nginx_group = 'www-data'
+    }
+    default: {
+      fail("Unsupported platform: ${::operatingsystem} ${::operatingsystemrelease}")
+    }
+  }
+
+  class { 'firewall': }
+  class { 'nodejs':
+    manage_repo => $manage_nodejs_repo,
+    require     => $nodejs_require,
+  }
 
   # setup nginx
   class { 'nginx': }
@@ -66,75 +133,73 @@ class learninglocker::web (
   # we need an app user to run composer install as bower complains being running as root
   user { 'app':
     ensure  => present,
-    groups  => ['nginx'],
+    groups  => [$nginx_group],
     home    => '/tmp',
     require => Package['nginx'],
   }
 
   # setup php
   class { 'php':
-    ensure => 'latest',
-    fpm => false,
-    composer => false,
-    phpunit => false,
-    dev => false,
-    pear => false,
-    package_prefix => 'php54-',
-    settings => {
+    ensure         => 'latest',
+    fpm            => false,
+    composer       => false,
+    phpunit        => false,
+    dev            => false,
+    pear           => false,
+    package_prefix => $php_package_prefix,
+    extensions     => $php_extensions,
+    require        => $php_require,
+    settings       => {
         'Date/date.timezone' => $timezone,
     },
-    extensions => {
-        'pecl-zendopcache' => {
-	    settings => {
-	      'OpCache/opcache.enable'      => '1',
-	      'OpCache/opcache.use_cwd'     => '1',
-	      'OpCache/opcache.save_comments' => '1',
-	      'OpCache/opcache.load_comments' => '1',
-	    }
-        },
-        'xml' => {},
-        'mcrypt' => {},
-        'pdo' => {},
-        'pecl-mongo' => {},
-        'mbstring' => {},
-    },
-    require => [Package['nginx'], Class['ius']],
+  } ->
+
+  # install fpm and create learning locker pool
+  class { 'php::fpm':
+    ensure => present,
+    pools  => {},
   }
 
-  Anchor['php::begin'] ->
-    class { 'php::fpm':
-      settings => $settings,
-      require => Package['nginx'],
-      pools => {
-        'learninglocker' => {
-          ensure => present,
-          user   => 'nginx',
-          group  => 'nginx'
-        },
-        'www' => {
-          ensure => absent,
-        }
-      }
-    } ->
-  Anchor['php::end']
+  php::fpm::pool { 'learninglocker':
+    ensure => present,
+    user => $nginx_user,
+    group => $nginx_group,
+  }
+
+  #class { 'php::fpm':
+  #  pools   => {
+  #    'learninglocker' => {
+  #      user  => 'nginx',
+  #      group => 'nginx'
+  #    },
+  #  },
+  #  require => Package['nginx'],
+  #} ->
+
+  # remove default pool
+  php::fpm::pool { 'www':
+    ensure => absent,
+  }
 
   class { 'composer':
-    php_package => 'php54-cli',
-    github_token => $github_token,
+    php_package     => $composer_php_package,
+    suhosin_enabled => false,
+    github_token    => $github_token,
+    require => Class['php'],
   }
 
   package { 'bower':
     ensure   => present,
     provider => 'npm',
-    require  => Package['npm'],
+    require  => Class['nodejs'],
   }
 
   # install learning locker application
   $base_dir = dirname($doc_base)
   exec { "create ${base_dir}":
-    command     => "mkdir -p ${base_dir}",
-    creates     => $base_dir,
-    path        => '/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin',
+    command => "mkdir -p ${base_dir}",
+    creates => $base_dir,
+    path    => '/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin',
   }->
 
   file { $base_dir:
@@ -171,95 +236,99 @@ class learninglocker::web (
   } ->
 
   composer::exec { 'learninglocker-install':
-     cmd     => 'install',
-     cwd     => $doc_base,
-     scripts => true,
-     timeout => 0,
-     dev     => false,
-     prefer_dist => true,
-     user    => 'app',
-     unless  => "test -f ${doc_base}/vendor/autoload.php",
+      cmd         => 'install',
+      cwd         => $doc_base,
+      scripts     => true,
+      timeout     => 0,
+      dev         => false,
+      prefer_dist => true,
+      user        => 'app',
+      unless      => "test -f ${doc_base}/vendor/autoload.php",
+      require     => Package['bower'],
   } ->
 
   file { ["${doc_base}/app/storage", "${doc_base}/app/storage/cache",
     "${doc_base}/app/storage/logs", "${doc_base}/app/storage/meta",
     "${doc_base}/app/storage/sessions", "${doc_base}/app/storage/views"]:
-    ensure => directory,
-    owner  => 'nginx',
-    mode   => '0775',
+    ensure  => directory,
+    owner   => $nginx_user,
+    mode    => '0775',
     require => Composer::Exec['learninglocker-install']
   }
 
   file { ["${doc_base}/app/storage/meta/services.json"]:
-    ensure => present,
-    owner  => 'nginx',
-    mode   => '0774',
+    ensure  => present,
+    owner   => $nginx_user,
+    mode    => '0774',
     require => Composer::Exec['learninglocker-install']
   }
 
   file {"${doc_base}/app/config/database.php":
-    ensure => present,
+    ensure  => present,
     content => template('learninglocker/database.php.erb'),
-    tag => $domain,
+    tag     => $::domain,
     require => Composer::Exec['learninglocker-install']
   }
 
   file {"${doc_base}/app/config/cache.php":
-    ensure => present,
+    ensure  => present,
     content => template('learninglocker/cache.php.erb'),
-    tag => $domain,
+    tag     => $::domain,
     require => Composer::Exec['learninglocker-install']
   }
 
   file {"${doc_base}/app/config/session.php":
-    ensure => present,
+    ensure  => present,
     content => template('learninglocker/session.php.erb'),
-    tag => $domain,
+    tag     => $::domain,
     require => Composer::Exec['learninglocker-install']
   }
 
-  nginx::resource::vhost {$server_domain:
-    ensure         => present,
-    www_root       => "${doc_base}/public",
-    listen_port    => $port,
-    server_name => $default_fqdn ? {
-      true  => [$server_domain, $fqdn],
+  $server_name = $default_fqdn ? {
+      true  => [$server_domain, $::fqdn],
       false => [$server_domain],
+  }
+  nginx::resource::vhost {$server_domain:
+    ensure               => present,
+    www_root             => "${doc_base}/public",
+    listen_port          => $port,
+    server_name          => $server_name,
+    vhost_cfg_prepend    => {
+      'add_header' => "X-APP-Server ${::hostname}"
     },
-    vhost_cfg_prepend => { 'add_header' => "X-APP-Server ${hostname}" },
-    ssl => $ssl,
-    ssl_cert => $ssl_cert,
-    ssl_key  => $ssl_key,
-    ssl_port => $ssl_port,
-    proxy_cache  =>  $proxy_cache,
-    proxy_cache_valid => $proxy_cache_valid,
+    ssl                  => $ssl,
+    ssl_cert             => $ssl_cert,
+    ssl_key              => $ssl_key,
+    ssl_port             => $ssl_port,
     use_default_location => false,
-    proxy_set_header => ['Host $host', 'X-Real-IP $remote_addr', 'X-Forwarded-For $proxy_add_x_forwarded_for']
+    proxy_set_header     => ['Host $host', 'X-Real-IP $remote_addr', 'X-Forwarded-For $proxy_add_x_forwarded_for']
   }
 
-  nginx::resource::location { "php_root_$server_domain":
-    ensure => present,
-    vhost => $server_domain,
-    location => '/',
-    www_root => "${doc_base}/public",
+  nginx::resource::location { "php_root_${server_domain}":
+    ensure                      => present,
+    vhost                       => $server_domain,
+    location                    => '/',
+    www_root                    => "${doc_base}/public",
     location_custom_cfg_prepend => {
       'if (-f $request_filename)' => '{ break; }',
       'if (-d $request_filename)' => '{ break; }'
     },
-    location_custom_cfg_append => {
+    location_custom_cfg_append  => {
       'rewrite' => '^(.+)$ /index.php?url=$1 last;'
     }
   }
 
-  nginx::resource::location { "php_$server_domain":
-    ensure => present,
-    vhost => $server_domain,
-    location => '~ \.php$',
-    fastcgi        => 'learninglocker',
-    fastcgi_param => {
+  nginx::resource::location { "php_${server_domain}":
+    ensure               => present,
+    vhost                => $server_domain,
+    location             => '~ \.php$',
+    fastcgi              => 'learninglocker',
+    fastcgi_param        => {
       'SCRIPT_FILENAME' => "${doc_base}/public/\$fastcgi_script_name",
     },
-    location_cfg_prepend => { fastcgi_read_timeout => 600 },
+    location_cfg_prepend => {
+      fastcgi_read_timeout => 600
+    },
   }
 
   firewall { '100 allow http and https access':

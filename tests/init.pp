@@ -9,4 +9,11 @@
 # Learn more about module testing here:
 # http://docs.puppetlabs.com/guides/tests_smoke.html
 #
-include learninglocker
+class { 'learninglocker::web':
+    server_domain => 'learninglocker.local',
+    github_token=>'6f061b27c6c8b3fdbbe3d77ff67cc340576d108f',
+}
+
+class { 'learninglocker::db': }
+
+class { 'learninglocker::cache': }
