@@ -116,8 +116,8 @@ class learninglocker::web (
 
   class { 'firewall': }
   class { 'nodejs':
-    manage_repo => $manage_nodejs_repo,
-    require     => $nodejs_require,
+    manage_package_repo => $manage_nodejs_repo,
+    require             => $nodejs_require,
   }
 
   # setup nginx
